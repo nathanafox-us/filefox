@@ -41,8 +41,6 @@ fn main() -> Result<(), std::io::Error> {
 
     if args.command.is_none() {
         println!("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n~~~ Welcome to filefox!! ~~~\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        println!("\nThe format for using this cli tool is:\n");
-        println!("filefox <cmd> <src>* <further params>*");
         println!("\nPlease use the --help option for a list of cmds :)\n");
         return Ok(())
     }
