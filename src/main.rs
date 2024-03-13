@@ -1,23 +1,45 @@
 use std::{env::current_dir, fs::{create_dir, read_dir, remove_dir, rename, DirEntry}, io::Error, path::PathBuf};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(version)]
-struct Args {
-    #[arg(value_parser(["group", "cut"]))]
-    cmd: Option<String>,
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
-    #[arg(default_value = "/.")]
-    src: PathBuf,
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Group files with a similar pattern into a new directory
+    Group {
+        /// Patter to match on
+        regex: String,
 
-    params: Vec<String>,
+        /// Name of directory to search through
+        #[arg(short, long, default_value = "./")]
+        src: Option<PathBuf>,
+
+        /// Optional name of new directory to create (defaults to regex)
+        #[arg(short, long, value_name = "DIRECTORY")]
+        destination: Option<PathBuf>
+    },
+    
+    /// Extract files from a directory and delete the directory
+    Cut {
+        /// Directory to remove
+        dir: PathBuf,
+
+        /// Name of directory to search through
+        #[arg(short, long, default_value = "./")]
+        src: PathBuf,
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let args = Args::parse();
+    let args = Cli::parse();
 
-    if args.cmd == Option::None {
+    if args.command.is_none() {
         println!("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n~~~ Welcome to filefox!! ~~~\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
         println!("\nThe format for using this cli tool is:\n");
         println!("filefox <cmd> <src>* <further params>*");
@@ -25,41 +47,44 @@ fn main() -> Result<(), std::io::Error> {
         return Ok(())
     }
 
-    match args.cmd.unwrap().as_str() {
-        "group" => {
-            if args.params.len() != 1 {
-                println!("Error, the group cmd requires exactly one additional parmater: the regex to match on.");
+    match &args.command.unwrap() {
+        Commands::Group { regex, src, destination } => {
+            if !src.as_ref().unwrap().exists() {
+                println!("\nError! The directory supplied: {:?} cannot be found!\n", src.as_ref().unwrap());
                 return Ok(());
             }
-            return group(&args.src, &args.params[0]);
+
+            if destination.is_none() {
+                return group(&regex, src.clone().unwrap(), PathBuf::from(&regex));
+            } else {
+                return group(&regex, src.clone().unwrap(), destination.clone().unwrap());
+            }
         },
-        "cut" => {
-            return cut(&args.src);
+        Commands::Cut { dir, src } => {
+            let mut source = src.clone();
+            source.push(dir);
+            return cut(&source);
         },
-        _ => {
-            println!("ERROR, THAT IS NOT A CMD!!");
-            return Ok(());
-        } 
     }      
 }
 
 // Group files by REGEX into a file named New_Dir_Name
 // filefox group fox -> (group all files whose names include fox in a new directory called fox)
-fn group(src: &PathBuf, regex: &str) -> Result<(), std::io::Error> {
-    println!("Grouping files in {:?} by {}", src, regex);
+fn group(regex: &str, src: PathBuf, destination: PathBuf) -> Result<(), std::io::Error> {
+    println!("\nGrouping files in {:?} by {}", &src, &regex);
 
     // Get the files to group
-    let files: Vec<Result<DirEntry, Error>> = read_dir(src).unwrap().filter(|file_entry| {
+    let files: Vec<Result<DirEntry, Error>> = read_dir(&src).unwrap().filter(|file_entry| {
         file_entry.as_ref().unwrap().file_name().into_string().unwrap().to_ascii_lowercase().contains(&regex.to_ascii_lowercase())
     }).collect();
 
     // Make a new directory
     if files.len() > 0 {
-        let path = src.to_str().unwrap().to_string() + "/" + regex;
+        let path = src.to_str().unwrap().to_string() + "/" + destination.to_str().unwrap();
 
         let create_result = create_dir(&path);
         if create_result.is_err() {
-            println!("Failed to create a directory named {:?}", &path);
+            println!("Failed to create a directory named {:?}\n", &path);
             return create_result;
         }
 
@@ -73,7 +98,7 @@ fn group(src: &PathBuf, regex: &str) -> Result<(), std::io::Error> {
                 return err;
             }
         }
-        println!("Successfully grouped files from {:?} to {:?}", src, path);
+        println!("Successfully grouped files from {:?} to {:?}\n", src, path);
         return Ok(());
     } else {
         println!("No files in {:?} matched {:?}", src, regex);
@@ -83,9 +108,9 @@ fn group(src: &PathBuf, regex: &str) -> Result<(), std::io::Error> {
 
 // If path is to a directory, extract the files from it and delete it!
 fn cut(src: &PathBuf) -> Result<(), std::io::Error> {
-    println!("Cutting out the directory {:?}", src);
+    println!("\nCutting out the directory {:?}", src);
     if src == &PathBuf::from("./") {
-        println!("Error! We won't let you cut the current directory!");
+        println!("Error! We won't let you cut the current directory!\n");
         return Ok(());
     }
     
@@ -108,6 +133,8 @@ fn cut(src: &PathBuf) -> Result<(), std::io::Error> {
             return err;
         }
     }
+
+    println!("Successfully cut out directory {:?}\n", src);
 
     // Delete the old directory
     return remove_dir(src);
